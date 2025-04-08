@@ -1,22 +1,51 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { AudioRecorder } from "@/components/audio-recorder"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { useSupabase } from "@/components/supabase-provider"
+import { Button } from "@/components/ui/button"
+import { Copy } from "lucide-react"
+import { useToast } from "@/components/ui/use-toast"
 
 export default function HomePage() {
   const [transcription, setTranscription] = useState("")
   const [title, setTitle] = useState("")
   const [isRecording, setIsRecording] = useState(false)
   const { user } = useSupabase()
+  const { toast } = useToast()
 
-  const handleTranscriptionUpdate = (text: string, isFinal: boolean) => {
+  const handleTranscriptionUpdate = useCallback((text: string, isFinal: boolean) => {
     setTranscription(text)
     if (isFinal) {
       setIsRecording(false)
     }
+  }, [])
+
+  const handleRecordingStateChange = useCallback((recording: boolean) => {
+    setIsRecording(recording)
+    if (recording) {
+      setTranscription("") // Clear transcription when starting
+    }
+  }, [])
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(transcription)
+      .then(() => {
+        toast({
+          title: "Copied!",
+          description: "Transcription copied to clipboard.",
+        })
+      })
+      .catch(err => {
+        console.error("Failed to copy text: ", err)
+        toast({
+          title: "Error",
+          description: "Failed to copy transcription.",
+          variant: "destructive",
+        })
+      })
   }
 
   return (
@@ -46,7 +75,7 @@ export default function HomePage() {
             </div>
             <AudioRecorder 
               onTranscriptionComplete={handleTranscriptionUpdate}
-              onRecordingStateChange={setIsRecording}
+              onRecordingStateChange={handleRecordingStateChange}
             />
           </div>
         </Card>
@@ -58,12 +87,10 @@ export default function HomePage() {
                 {title || "Untitled Transcription"}
               </h2>
               {transcription && (
-                <button
-                  onClick={() => navigator.clipboard.writeText(transcription)}
-                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Copy to clipboard
-                </button>
+                <Button variant="ghost" size="icon" onClick={copyToClipboard} disabled={!transcription}>
+                  <Copy className="h-4 w-4" />
+                  <span className="sr-only">Copy transcription</span>
+                </Button>
               )}
             </div>
             <div className="p-4 bg-muted rounded-lg min-h-[200px]">

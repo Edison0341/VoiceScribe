@@ -13,14 +13,28 @@ interface AudioRecorderProps {
 export function AudioRecorder({ onTranscriptionComplete, onRecordingStateChange }: AudioRecorderProps) {
   const [isRecording, setIsRecording] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [hasMicrophonePermission, setHasMicrophonePermission] = useState<boolean | null>(null)
   const { toast } = useToast()
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const chunksRef = useRef<Blob[]>([])
 
   useEffect(() => {
+    // Check if the browser supports getUserMedia
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast({
+        title: "Browser not supported",
+        description: "Your browser doesn't support audio recording.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3000";
+    console.log("Attempting to connect WebSocket to:", wsUrl);
+
     // Initialize WebSocket connection
-    const ws = new WebSocket(process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3001")
+    const ws = new WebSocket(wsUrl)
     
     ws.onopen = () => {
       console.log("WebSocket connected")
@@ -35,60 +49,110 @@ export function AudioRecorder({ onTranscriptionComplete, onRecordingStateChange 
       }
     }
 
-    ws.onerror = (error) => {
-      console.error("WebSocket error:", error)
+    ws.onerror = (event) => {
+      console.error("WebSocket error event:", event);
       toast({
         title: "Connection error",
-        description: "Failed to connect to transcription service",
+        description: "Failed to connect to transcription service. Please try again.",
         variant: "destructive",
       })
     }
 
     wsRef.current = ws
 
+    // Check microphone permission status
+    navigator.permissions.query({ name: 'microphone' as PermissionName })
+      .then((permissionStatus) => {
+        setHasMicrophonePermission(permissionStatus.state === 'granted')
+        
+        permissionStatus.onchange = () => {
+          setHasMicrophonePermission(permissionStatus.state === 'granted')
+        }
+      })
+      .catch(error => {
+        console.error("Error checking microphone permission:", error)
+      })
+
     return () => {
       ws.close()
     }
   }, [toast, onTranscriptionComplete])
 
+  const requestMicrophonePermission = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true })
+      setHasMicrophonePermission(true)
+      startRecording()
+    } catch (error) {
+      console.error("Error requesting microphone permission:", error)
+      toast({
+        title: "Permission denied",
+        description: "Please allow microphone access to record audio. You may need to enable it in your browser settings.",
+        variant: "destructive",
+      })
+      setHasMicrophonePermission(false)
+    }
+  }
+
   const startRecording = async () => {
+    console.log("Attempting to start recording...");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mediaRecorder = new MediaRecorder(stream)
+      console.log("Microphone access granted.");
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
       mediaRecorderRef.current = mediaRecorder
       chunksRef.current = []
 
       mediaRecorder.ondataavailable = (event) => {
+        console.log(`ondataavailable event fired. Data size: ${event.data.size}`);
         if (event.data.size > 0) {
           chunksRef.current.push(event.data)
           // Send audio chunk through WebSocket
           if (wsRef.current?.readyState === WebSocket.OPEN) {
+            console.log("WebSocket OPEN, sending audio chunk...");
             wsRef.current.send(event.data)
+          } else {
+            console.log(`WebSocket not open. State: ${wsRef.current?.readyState}`);
           }
         }
       }
 
       mediaRecorder.onstop = () => {
+        console.log("mediaRecorder.onstop event fired.");
         // Send stop signal to server
         if (wsRef.current?.readyState === WebSocket.OPEN) {
+          console.log("WebSocket OPEN, sending stop signal...");
           wsRef.current.send(JSON.stringify({ type: "stop" }))
+        } else {
+           console.log(`WebSocket not open on stop. State: ${wsRef.current?.readyState}`);
         }
       }
 
+      mediaRecorder.onerror = (event) => {
+        console.error("MediaRecorder error:", event);
+        toast({
+          title: "Recording Error",
+          description: "An error occurred with the media recorder.",
+          variant: "destructive",
+        });
+      };
+
       mediaRecorder.start(1000) // Collect data every second
+      console.log("MediaRecorder started.");
       setIsRecording(true)
       onRecordingStateChange?.(true)
     } catch (error) {
       console.error("Error starting recording:", error)
       toast({
         title: "Recording error",
-        description: "Failed to start recording. Please check your microphone permissions.",
+        description: "Failed to start recording. Please check your microphone settings.",
         variant: "destructive",
       })
     }
   }
 
   const stopRecording = async () => {
+    console.log("Attempting to stop recording...");
     try {
       if (!mediaRecorderRef.current) return
 
@@ -97,9 +161,6 @@ export function AudioRecorder({ onTranscriptionComplete, onRecordingStateChange 
       setIsRecording(false)
       onRecordingStateChange?.(false)
       setIsProcessing(true)
-
-      // The onstop handler will send the stop signal to the server
-      // and the server will respond with the transcription
     } catch (error) {
       console.error("Error stopping recording:", error)
       toast({
@@ -112,10 +173,20 @@ export function AudioRecorder({ onTranscriptionComplete, onRecordingStateChange 
     }
   }
 
+  const handleRecordClick = () => {
+    if (isRecording) {
+      stopRecording()
+    } else if (hasMicrophonePermission === true) {
+      startRecording()
+    } else {
+      requestMicrophonePermission()
+    }
+  }
+
   return (
     <div className="flex items-center gap-4">
       <Button
-        onClick={isRecording ? stopRecording : startRecording}
+        onClick={handleRecordClick}
         disabled={isProcessing}
         variant={isRecording ? "destructive" : "default"}
         size="lg"

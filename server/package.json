@@ -1,0 +1,23 @@
+{
+  "name": "voice-transcription-server",
+  "version": "1.0.0",
+  "description": "WebSocket server for audio transcription",
+  "main": "websocket.ts",
+  "scripts": {
+    "start": "ts-node websocket.ts",
+    "dev": "nodemon --exec ts-node websocket.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "openai": "^4.24.1",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "@types/ws": "^8.5.10",
+    "nodemon": "^3.0.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+} 

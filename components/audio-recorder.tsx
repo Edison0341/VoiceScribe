@@ -18,6 +18,8 @@ export function AudioRecorder({ onTranscriptionComplete, onRecordingStateChange 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const chunksRef = useRef<Blob[]>([])
+  const [recordingTime, setRecordingTime] = useState(0)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     // Check if the browser supports getUserMedia
@@ -41,11 +43,25 @@ export function AudioRecorder({ onTranscriptionComplete, onRecordingStateChange 
     }
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data)
-      if (data.type === "transcription") {
-        if (onTranscriptionComplete) {
-          onTranscriptionComplete(data.text, data.isFinal)
+      console.log("WebSocket message received:", event.data);
+      try {
+        const data = JSON.parse(event.data)
+        console.log("Parsed WebSocket message:", data);
+        if (data.type === "transcription") {
+          console.log("Transcription received:", data.text);
+          if (onTranscriptionComplete) {
+            onTranscriptionComplete(data.text, data.isFinal)
+          }
+        } else if (data.type === "error") {
+          console.error("Error from server:", data.message);
+          toast({
+            title: "Transcription error",
+            description: data.message || "An error occurred during transcription.",
+            variant: "destructive",
+          })
         }
+      } catch (error) {
+        console.error("Error parsing WebSocket message:", error);
       }
     }
 
@@ -77,6 +93,29 @@ export function AudioRecorder({ onTranscriptionComplete, onRecordingStateChange 
       ws.close()
     }
   }, [toast, onTranscriptionComplete])
+
+  useEffect(() => {
+    if (isRecording) {
+      timerRef.current = setInterval(() => {
+        setRecordingTime((prevTime) => prevTime + 1);
+      }, 1000);
+    } else if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [isRecording]);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const requestMicrophonePermission = async () => {
     try {
@@ -200,6 +239,7 @@ export function AudioRecorder({ onTranscriptionComplete, onRecordingStateChange 
         )}
         {isProcessing ? "Processing..." : isRecording ? "Stop Recording" : "Start Recording"}
       </Button>
+      {isRecording && <span>{formatTime(recordingTime)}</span>}
     </div>
   )
 } 

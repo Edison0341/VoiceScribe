@@ -55,7 +55,9 @@ wss.on("connection", (ws: WebSocket) => {
               const file = createReadStream(audioPath)
               console.log(`[${clientId}] Sending final audio to OpenAI for transcription...`);
               console.log(`[${clientId}] OpenAI API Key length:`, process.env.OPENAI_API_KEY?.length || 'not set');
+              console.log(`[${clientId}] Audio file size:`, audioBuffer.length, 'bytes');
               try {
+                console.log(`[${clientId}] Calling OpenAI API...`);
                 const transcription = await openai.audio.transcriptions.create({
                   file,
                   model: "whisper-1",
@@ -71,6 +73,11 @@ wss.on("connection", (ws: WebSocket) => {
                 console.log(`[${clientId}] Sent final transcription to client.`);
               } catch (error: any) {
                 console.error(`[${clientId}] OpenAI API Error:`, error);
+                console.error(`[${clientId}] OpenAI API Error details:`, {
+                  message: error.message,
+                  status: error.status,
+                  response: error.response?.data,
+                });
                 ws.send(JSON.stringify({
                   type: "error",
                   message: "Failed to transcribe audio: " + (error.message || 'Unknown OpenAI error'),

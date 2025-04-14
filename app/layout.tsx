@@ -11,7 +11,7 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata = {
   title: "VoiceScribe - Modern Voice Transcription",
   description: "Real-time voice-to-text transcription powered by AI",
-    generator: 'v0.dev'
+  generator: 'v0.dev'
 }
 
 export default function RootLayout({
